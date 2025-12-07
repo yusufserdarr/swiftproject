@@ -12,7 +12,8 @@ import SwiftData
 struct suI_zimApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            ActivityLog.self,
+            ReservoirStatus.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
