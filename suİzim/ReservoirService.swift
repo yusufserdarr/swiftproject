@@ -24,6 +24,13 @@ struct BursaDam: Codable {
     let olcumTarihi: Int64?
 }
 
+struct IzmirBaraj: Codable {
+    let BarajKuyuAdi: String
+    let DolulukOrani: Double
+    let MaksimumSuKapasitesi: Double
+    let SuDurumu: Double
+}
+
 @MainActor
 class ReservoirService: NSObject, ObservableObject {
     // ... existing properties ...
@@ -64,18 +71,23 @@ class ReservoirService: NSObject, ObservableObject {
             }
             return (0.0, "")
         case .izmir:
-             // Calculate from individual dams if scraped general is not available
-             // But usually for Izmir we get individual dams.
-             // We can calculate avg or sum if needed.
-             // Let's use the average of valid dams for now or 0 if empty.
-            let dams = await fetchIzmirData()
-            guard !dams.isEmpty else { return (0.0, "") }
-            
-            // Weighted average would be better if we had capacity, but for now simple average or 
-            // if we can find a general rate in the CSV or scraping logic.
-             let totalRate = dams.reduce(0.0) { $0 + $1.occupancyRate }
-             let avg = totalRate / Double(dams.count)
-             return (avg, "Canlı Veri (İzmir)")
+             // User requested to match izmirbaraj.com specific value (e.g. 8.75%)
+             // This site likely uses a simple arithmetic mean of the percentages, not weighted by volume.
+             guard let url = URL(string: "https://openapi.izmir.bel.tr/api/izsu/barajdurum") else { return (0.0, "") }
+             do {
+                 let (data, _) = try await URLSession.shared.data(from: url)
+                 let dams = try JSONDecoder().decode([IzmirBaraj].self, from: data)
+                 
+                 guard !dams.isEmpty else { return (0.0, "") }
+                 
+                 // Simple Average Calculation
+                 let totalPercentage = dams.reduce(0.0) { $0 + $1.DolulukOrani }
+                 let simpleAvg = totalPercentage / Double(dams.count)
+                 
+                 return (simpleAvg, "Canlı Veri (İzmir)")
+             } catch {
+                 return (0.0, "")
+             }
         case .bursa:
             let dams = await fetchBursaData()
             // Find "Bursa Geneli" if exists or average
@@ -149,33 +161,28 @@ class ReservoirService: NSObject, ObservableObject {
     
     // MARK: - Izmir Logic
     private func fetchIzmirData() async -> [ReservoirStatus] {
-        await MainActor.run { cleanup() } 
+        // Official API found via Open Data Portal
+        guard let url = URL(string: "https://openapi.izmir.bel.tr/api/izsu/barajdurum") else { return [] }
         
-        // Create URL - using base URL to let WebView handle redirects naturally
-        guard let url = URL(string: "https://www.izsu.gov.tr/tr/Barajlar/BarajSuDolulukOranlari") else { return [] }
-        
-        return await withCheckedContinuation { continuation in
-            // Create WebView on Main Thread
-            let config = WKWebViewConfiguration()
-            let webView = WKWebView(frame: .zero, configuration: config)
-            webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            let (data, _) = try await URLSession.shared.data(for: request)
             
-            self.webView = webView
-            webView.navigationDelegate = self
+            // Response is a JSON Array: [{"BarajKuyuAdi":"...", "DolulukOrani":1, ...}, ...]
+            let dams = try JSONDecoder().decode([IzmirBaraj].self, from: data)
             
-            let request = URLRequest(url: url)
-            webView.load(request)
-            
-            self.izmirContinuation = continuation
-            
-            // Timeout safety
-            DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-                // Only act if this specific continuation is still active
-                if self?.izmirContinuation != nil {
-                    print("Izmir Timeout - Resume returning empty")
-                    self?.cleanup() // This will resume with []
-                }
+            return dams.map { item in
+                ReservoirStatus(
+                    name: item.BarajKuyuAdi,
+                    occupancyRate: item.DolulukOrani,
+                    city: .izmir
+                )
             }
+        } catch {
+            print("Izmir API Error: \(error)")
+            // Fallback to empty (or we could keep scraper as backup, but API is preferred)
+            return []
         }
     }
     
@@ -311,7 +318,7 @@ extension ReservoirService: WKNavigationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let url = webView.url?.absoluteString else { return }
             
-            if url.contains("izsu.gov.tr") {
+            if url.contains("izsu.gov.tr") || url.contains("izmirbaraj.com") {
                 self?.extractIzmirData(from: webView)
             } else if url.contains("iski.istanbul") {
                  // Determine if we are scraping general rate or details
@@ -421,12 +428,17 @@ extension ReservoirService: WKNavigationDelegate {
                 
                 let lowerText = text.lowercased()
                 
+                // Content format: "Tahtalı Barajı 1.00 %" or similar
+                // We'll search for the name, then find the closest number.
+                
                 for name in damNames {
                     let lowerName = name.lowercased()
                     if let rangeName = lowerText.range(of: lowerName) {
                         let subtitle = lowerText[rangeName.upperBound...]
-                        let searchArea = String(subtitle.prefix(150))
+                        let searchArea = String(subtitle.prefix(50)) // Data is close now
                         
+                        // Look for number likely followed by %
+                        // Pattern: digits dot/comma digits (e.g. 1.00)
                         let pattern = #"(\d{1,2}[.,]\d{2})"#
                         if let rangeRate = searchArea.range(of: pattern, options: .regularExpression) {
                             let match = String(searchArea[rangeRate]).replacingOccurrences(of: ",", with: ".")
@@ -438,11 +450,20 @@ extension ReservoirService: WKNavigationDelegate {
                     }
                 }
                 
-                let finalDams = dams
+                // Deduplicate?
+                // Just take unique names
+                let uniqueDams = Array(Set(dams))
+                
+                if uniqueDams.isEmpty {
+                     print("Izmir Scraper Failed. Content Preview: \(text.prefix(500))")
+                } else {
+                     print("Izmir Scraper Success. Found: \(uniqueDams.count) items.")
+                }
+                
                 await MainActor.run {
                     if let ic = self?.izmirContinuation {
                         self?.izmirContinuation = nil // Critical: Prevent double resume
-                        ic.resume(returning: finalDams)
+                        ic.resume(returning: uniqueDams)
                     }
                     self?.cleanup()
                 }

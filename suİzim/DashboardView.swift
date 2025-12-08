@@ -246,8 +246,7 @@ struct DashboardView: View {
         switch selectedCity {
         case .istanbul: return URL(string: "https://data.ibb.gov.tr/dataset/istanbul-baraj-doluluk-oranlari")!
         case .ankara: return URL(string: "https://www.aski.gov.tr/tr/Baraj.aspx")!
-        // Revert to base URL to rely on WKWebView's redirect handling
-        case .izmir: return URL(string: "https://www.izsu.gov.tr/tr/Barajlar/BarajSuDolulukOranlari")!
+        case .izmir: return URL(string: "https://acikveri.bizizmir.com/tr/dataset/barajlarin-doluluk-oranlari")!
         case .bursa: return URL(string: "https://bapi.bursa.bel.tr/apigateway/bbbAcikVeri_Buski/baraj")!
         }
     }
@@ -256,23 +255,11 @@ struct DashboardView: View {
         isLoading = true
         reservoirData = await reservoirService.fetchReservoirData(for: selectedCity)
         
-        // Optimization: If we have individual dam data, calculate general rate locally
-        // to avoid a second network request (preventing rate-limiting/delays).
-        if !reservoirData.isEmpty {
-            let total = reservoirData.reduce(0.0) { $0 + $1.occupancyRate }
-            generalOccupancy = total / Double(reservoirData.count)
-            dataDate = "Canlı Veri"
-            
-            // For Bursa, try to find "Geneli" item specifically if exists
-            if selectedCity == .bursa, let geneli = reservoirData.first(where: { $0.name.contains("Geneli") }) {
-                generalOccupancy = geneli.occupancyRate
-            }
-        } else {
-            // Only fetch general rate separately if list is empty (e.g. Ankara)
-            let result = await reservoirService.getGeneralOccupancyRate(for: selectedCity)
-            generalOccupancy = result.rate
-            dataDate = result.date
-        }
+        // Always fetch general rate from service to ensure correct calculation (e.g. Weighted Average)
+        let result = await reservoirService.getGeneralOccupancyRate(for: selectedCity)
+        
+        generalOccupancy = result.rate
+        dataDate = result.date
         
         isLoading = false
     }
