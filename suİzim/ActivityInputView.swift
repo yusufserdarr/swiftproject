@@ -119,7 +119,7 @@ struct ActivityInputView: View {
     @State private var selectedActivity = "Duş"
     @State private var amount: Double = 10.0
     
-    let activities = Array(WaterCalculator.activityRates.keys).sorted()
+    let activities = WaterCalculator.orderedActivities
     
     var calculatedUsage: Double {
         WaterCalculator.calculateWaterUsage(activityName: selectedActivity, amount: amount)
@@ -131,18 +131,16 @@ struct ActivityInputView: View {
         switch selectedActivity {
         case "Duş":
             return "Duş ne kadar sürdü?"
-        case "Diş Fırçalama":
-            return "Ne kadar sürdü?"
         case "Bulaşık (Elde)":
             return "Bulaşıkları kaç dakika yıkadın?" //
         case "Bulaşık (Makine)", "Çamaşır (Makine)":
             return "Makineyi kaç kez çalıştırdın?"
         case "Sifon":
             return "Sifona kaç kez bastın?"
-        case "El Yıkama":
-            return "Bugün kaç kez el yıkadın?"
         case "Araba Yıkama":
             return "Arabayı kaç dakika yıkadın?"
+        case "Prompt":
+            return "Kaç defa prompt girdin?"
         default:
             return "Miktar nedir?"
         }
@@ -167,11 +165,11 @@ struct ActivityInputView: View {
     // Az önceki mantığı koruyoruz, aktiviteye göre mantıklı sınırlar.
     var sliderRange: ClosedRange<Double> {
         switch selectedActivity {
-        case "Duş": return 1...60
+        case "Duş": return 1...120
         case "Diş Fırçalama": return 1...10
         case "Araba Yıkama": return 1...60
         case "Sifon" : return 1...20
-        case "El Yıkama": return 1...20
+        case "Prompt" : return 1...2000
         default: return 1...15 // Makineler ve Elde bulaşık için
         }
     }
