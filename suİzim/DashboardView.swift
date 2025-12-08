@@ -5,7 +5,7 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var activities: [ActivityLog]
     
-    @State private var reservoirData: [ReservoirStatus] = []
+    @State private var reservoirData: [ReservoirInfo] = []
     @State private var generalOccupancy: Double = 0.0
     @State private var dataDate: String = ""
     @State private var selectedCity: City = .istanbul

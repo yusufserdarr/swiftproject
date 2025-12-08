@@ -46,3 +46,11 @@ enum City: String, CaseIterable, Codable {
     case izmir = "İzmir"
     case bursa = "Bursa"
 }
+
+// Temporary Struct for Data Transfer (Avoiding SwiftData context issues in Service)
+struct ReservoirInfo: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let occupancyRate: Double
+    let city: City
+}

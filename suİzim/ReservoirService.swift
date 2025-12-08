@@ -41,10 +41,10 @@ class ReservoirService: NSObject, ObservableObject {
     // Scraper properties
     private var webView: WKWebView?
     private var continuation: CheckedContinuation<(Double, String)?, Never>?
-    private var izmirContinuation: CheckedContinuation<[ReservoirStatus], Never>?
+    private var listContinuation: CheckedContinuation<[ReservoirInfo], Never>? // Renamed from izmirContinuation
     
     // MARK: - Public API
-    func fetchReservoirData(for city: City = .istanbul) async -> [ReservoirStatus] {
+    func fetchReservoirData(for city: City = .istanbul) async -> [ReservoirInfo] {
         switch city {
         case .istanbul:
             // return [] // API does not provide individual dams
@@ -111,7 +111,7 @@ class ReservoirService: NSObject, ObservableObject {
     }
     
     // NEW: Fetch Individual Dam Data for Istanbul
-    private func fetchIstanbulDetails() async -> [ReservoirStatus] {
+    private func fetchIstanbulDetails() async -> [ReservoirInfo] {
          await MainActor.run { cleanup() } 
          
          guard let url = URL(string: "https://iski.istanbul/baraj-doluluk/") else { return [] }
@@ -127,14 +127,11 @@ class ReservoirService: NSObject, ObservableObject {
              let request = URLRequest(url: url)
              webView.load(request)
              
-             // We reuse the 'izmirContinuation' type for list of dams, 
-             // or we can add a new one. Since they are same type [ReservoirStatus], we can reuse.
-             // But to be clean/safe against race conditions, we should probably be careful.
-             // Since we cleanup() before, reusing is fine.
-             self.izmirContinuation = continuation
+             self.listContinuation = continuation
              
+             // Time out handled in webView didFinish + internal timeout
              DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-                 if self?.izmirContinuation != nil {
+                 if self?.listContinuation != nil {
                      print("Istanbul Detail Timeout")
                      self?.cleanup()
                  }
@@ -149,18 +146,18 @@ class ReservoirService: NSObject, ObservableObject {
         
         // CRITICAL FIX: Resume any pending continuations so tasks don't hang/leak
         if let c = continuation {
+            continuation = nil // Ensure nil before resume
             c.resume(returning: nil)
         }
-        continuation = nil
         
-        if let ic = izmirContinuation {
-            ic.resume(returning: [])
+        if let lc = listContinuation {
+            listContinuation = nil // Ensure nil before resume
+            lc.resume(returning: [])
         }
-        izmirContinuation = nil
     }
     
     // MARK: - Izmir Logic
-    private func fetchIzmirData() async -> [ReservoirStatus] {
+    private func fetchIzmirData() async -> [ReservoirInfo] {
         // Official API found via Open Data Portal
         guard let url = URL(string: "https://openapi.izmir.bel.tr/api/izsu/barajdurum") else { return [] }
         
@@ -173,7 +170,7 @@ class ReservoirService: NSObject, ObservableObject {
             let dams = try JSONDecoder().decode([IzmirBaraj].self, from: data)
             
             return dams.map { item in
-                ReservoirStatus(
+                ReservoirInfo(
                     name: item.BarajKuyuAdi,
                     occupancyRate: item.DolulukOrani,
                     city: .izmir
@@ -187,7 +184,7 @@ class ReservoirService: NSObject, ObservableObject {
     }
     
     // MARK: - Bursa Logic
-    private func fetchBursaData() async -> [ReservoirStatus] {
+    private func fetchBursaData() async -> [ReservoirInfo] {
         guard let url = URL(string: "https://bapi.bursa.bel.tr/apigateway/bbbAcikVeri_Buski/baraj") else { 
             print("Bursa URL Error")
             return [] 
@@ -197,24 +194,16 @@ class ReservoirService: NSObject, ObservableObject {
             var request = URLRequest(url: url)
             request.timeoutInterval = 15
             // Create a session that ignores SSL errors just for testing (if possible) or use default
-            let (data, response) = try await URLSession.shared.data(for: request)
+            // Create a session that ignores SSL errors just for testing (if possible) or use default
+            let (data, _) = try await URLSession.shared.data(for: request)
             
-            if let httpResponse = response as? HTTPURLResponse {
-                // print("Bursa API Code: \(httpResponse.statusCode)")
-            }
-            
-            // Debug raw data
-            if let str = String(data: data, encoding: .utf8) {
-                // print("Bursa Raw Response: \(str)")
-            }
-
             let bursaResponse = try JSONDecoder().decode(BursaResponse.self, from: data)
             
-            var dams: [ReservoirStatus] = []
+            var dams: [ReservoirInfo] = []
             for item in bursaResponse.sonuc {
                 // Include all items, even "Geneli", to ensure we show data.
                 // UI can filter if needed, or we use unique ID.
-                dams.append(ReservoirStatus(
+                dams.append(ReservoirInfo(
                     name: item.barajAdi,
                     occupancyRate: item.dolulukOrani,
                     city: .bursa
@@ -255,11 +244,23 @@ class ReservoirService: NSObject, ObservableObject {
     
     private func scrapeIstanbulLiveData() async -> (Double, String)? {
         guard let url = URL(string: "https://iski.istanbul/baraj-doluluk/") else { return nil }
+        
+        // HTML'in tamamını alıp spesifik bir ID veya class aramak daha iyidir.
+        // Ancak basit regex düzeltmesi şöyledir:
+        // Sadece sayıya odaklanmak yerine, öncesinde veya sonrasında % işareti veya 'Doluluk' kelimesi arayın.
+        
         return await scrapeWebsite(url: url) { text in
-            let pattern = #"(\d{1,2}[.,]\d{2})"#
+            // Örnek metin: "Genel Doluluk Oranı % 35,40"
+            let pattern = #"%\s*(\d{1,2}[.,]\d{2})"# // % işareti, opsiyonel boşluk, sayı
+            
             if let range = text.range(of: pattern, options: .regularExpression) {
-                let match = String(text[range]).replacingOccurrences(of: ",", with: ".")
-                return Double(match)
+                let matchString = String(text[range])
+                // matchString "% 35,40" olabilir, buradan sadece sayıyı çekmeliyiz:
+                let numberPattern = #"(\d{1,2}[.,]\d{2})"#
+                if let numberRange = matchString.range(of: numberPattern, options: .regularExpression) {
+                    let numberStr = String(matchString[numberRange]).replacingOccurrences(of: ",", with: ".")
+                    return Double(numberStr)
+                }
             }
             return nil
         }
@@ -315,29 +316,50 @@ class ReservoirService: NSObject, ObservableObject {
 
 extension ReservoirService: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            guard let url = webView.url?.absoluteString else { return }
-            
-            if url.contains("izsu.gov.tr") || url.contains("izmirbaraj.com") {
-                self?.extractIzmirData(from: webView)
-            } else if url.contains("iski.istanbul") {
-                 // Determine if we are scraping general rate or details
-                 // We can distinguish by checkin which continuation is active
-                 if self?.continuation != nil {
-                     self?.extractData(from: webView) // General Rate
-                 } else if self?.izmirContinuation != nil {
-                     self?.extractIstanbulDetails(from: webView) // Details List
-                 }
-            } else {
-                self?.extractData(from: webView)
+        // Implement Polling instead of hard wait
+        // Start checking for content immediately and repeat every 0.5s for 5 seconds max
+        checkForContent(in: webView, attempt: 0)
+    }
+    
+    private func checkForContent(in webView: WKWebView, attempt: Int) {
+        // Max 10 attempts (5 seconds)
+        guard attempt < 10 else {
+            // Give up and try to extract what we have
+            finalizeExtraction(from: webView)
+            return
+        }
+        
+        // Lightweight check to see if body has substantial content
+        let checkScript = "document.body.innerText.length"
+        webView.evaluateJavaScript(checkScript) { [weak self] (result, error) in
+            guard let length = result as? Int, length > 100 else {
+                // Not ready, try again
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self?.checkForContent(in: webView, attempt: attempt + 1)
+                }
+                return
             }
+            // Ready
+            self?.finalizeExtraction(from: webView)
+        }
+    }
+    
+    private func finalizeExtraction(from webView: WKWebView) {
+        guard let url = webView.url?.absoluteString else { return }
+        
+        // Dispatch based on URL/State
+        if url.contains("iski.istanbul") {
+             if self.continuation != nil {
+                 self.extractData(from: webView) // General Rate
+             } else if self.listContinuation != nil {
+                 self.extractIstanbulDetails(from: webView) // Details List
+             }
+        } else {
+            self.extractData(from: webView)
         }
     }
     
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        // Hata durumunda bekleyen tüm işlemleri sonlandır
-        continuation?.resume(returning: nil)
-        izmirContinuation?.resume(returning: [])
         cleanup()
     }
     
@@ -408,135 +430,48 @@ extension ReservoirService: WKNavigationDelegate {
         }
     }
     
-    // İzmir Liste Verisi Çekme
-    private func extractIzmirData(from webView: WKWebView) {
-        let script = "document.body.innerText"
-        webView.evaluateJavaScript(script) { [weak self] (result, error) in
-            guard let text = result as? String, error == nil else {
-                if let ic = self?.izmirContinuation {
-                    self?.izmirContinuation = nil
-                    ic.resume(returning: [])
-                }
-                self?.cleanup()
-                return
-            }
-            
-            // Offload parsing to background
-            Task.detached {
-                var dams: [ReservoirStatus] = []
-                let damNames = ["Tahtalı", "Balçova", "Gördes", "Ürkmez", "Güzelhisar", "Alaçatı"]
-                
-                let lowerText = text.lowercased()
-                
-                // Content format: "Tahtalı Barajı 1.00 %" or similar
-                // We'll search for the name, then find the closest number.
-                
-                for name in damNames {
-                    let lowerName = name.lowercased()
-                    if let rangeName = lowerText.range(of: lowerName) {
-                        let subtitle = lowerText[rangeName.upperBound...]
-                        let searchArea = String(subtitle.prefix(50)) // Data is close now
-                        
-                        // Look for number likely followed by %
-                        // Pattern: digits dot/comma digits (e.g. 1.00)
-                        let pattern = #"(\d{1,2}[.,]\d{2})"#
-                        if let rangeRate = searchArea.range(of: pattern, options: .regularExpression) {
-                            let match = String(searchArea[rangeRate]).replacingOccurrences(of: ",", with: ".")
-                            if let rate = Double(match) {
-                                let displayName = name.capitalized + " Barajı"
-                                dams.append(ReservoirStatus(name: displayName, occupancyRate: rate, city: .izmir))
-                            }
-                        }
-                    }
-                }
-                
-                // Deduplicate?
-                // Just take unique names
-                let uniqueDams = Array(Set(dams))
-                
-                if uniqueDams.isEmpty {
-                     print("Izmir Scraper Failed. Content Preview: \(text.prefix(500))")
-                } else {
-                     print("Izmir Scraper Success. Found: \(uniqueDams.count) items.")
-                }
-                
-                await MainActor.run {
-                    if let ic = self?.izmirContinuation {
-                        self?.izmirContinuation = nil // Critical: Prevent double resume
-                        ic.resume(returning: uniqueDams)
-                    }
-                    self?.cleanup()
-                }
-            }
-        }
-    }
+
     // İstanbul Detaylı Liste Verisi Çekme (Scraping)
     private func extractIstanbulDetails(from webView: WKWebView) {
-        let script = "document.body.innerText" // Charts often expose data in accessibility text or we can try innerHTML
-        // Better: document.documentElement.outerHTML to catch scripts
-        let htmlScript = "document.documentElement.outerHTML"
+        let script = "document.documentElement.outerHTML" // Search entire HTML
         
-        webView.evaluateJavaScript(htmlScript) { [weak self] (result, error) in
+        webView.evaluateJavaScript(script) { [weak self] (result, error) in
             guard let html = result as? String, error == nil else {
                 self?.cleanup()
                 return
             }
             
             Task.detached {
-                var dams: [ReservoirStatus] = []
+                var dams: [ReservoirInfo] = []
                 let damNames = ["Ömerli", "Darlık", "Elmalı", "Terkos", "Alibey", "Büyükçekmece", "Sazlıdere", "Istrancalar", "Kazandere", "Pabuçdere"]
                 
-                // Strategy: Search for Name ... number pattern
-                // OR search for highcharts data series if available.
-                // Simple text fallback first:
-                // "Ömerli % 85,12"
-                
-                // Let's try to match: Name followed nearby by a percentage-like number
-                // Regex: (Name) ... many chars ... (\d+[,.]\d+)
-                // This is risky. 
-                
-                // Alternative: Look for specific IDs or chart labels.
-                
-                // Let's try simple text regex closer to what we see on screen
                 let lowerHtml = html.lowercased()
                 
                 for name in damNames {
                     let lowerName = name.lowercased()
-                    // Find name
                     if let rangeName = lowerHtml.range(of: lowerName) {
-                         // Search forward 200 chars for a number
                          let start = rangeName.upperBound
                          let end = lowerHtml.index(start, offsetBy: 200, limitedBy: lowerHtml.endIndex) ?? lowerHtml.endIndex
                          let substring = lowerHtml[start..<end]
                          
-                         // Look for: 85,45 or 85.45
                          let pattern = #"(\d{1,2}[.,]\d{2})"#
                          if let rangeVal = substring.range(of: pattern, options: .regularExpression) {
                              let valStr = String(substring[rangeVal]).replacingOccurrences(of: ",", with: ".")
                              if let val = Double(valStr) {
-                                 // Basic sanity check: occupancy is 0-100
                                  if val <= 100.0 {
-                                     dams.append(ReservoirStatus(name: name, occupancyRate: val, city: .istanbul))
+                                     dams.append(ReservoirInfo(name: name, occupancyRate: val, city: .istanbul))
                                  }
                              }
                          }
                     }
                 }
                 
-                // Deduplicate?
-                // Just take unique names
                 let uniqueDams = Array(Set(dams))
                 
-                if uniqueDams.isEmpty {
-                     print("Izmir/Istanbul Scraper Failed. Content Preview: \(html.prefix(500))")
-                } else {
-                     print("Izmir/Istanbul Scraper Success. Found: \(uniqueDams.count) items.")
-                }
-                
                 await MainActor.run {
-                    if let ic = self?.izmirContinuation {
-                        self?.izmirContinuation = nil
-                        ic.resume(returning: uniqueDams)
+                    if let lc = self?.listContinuation {
+                        self?.listContinuation = nil // Prevent double resume
+                        lc.resume(returning: uniqueDams)
                     }
                     self?.cleanup()
                 }
