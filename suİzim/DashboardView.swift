@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
@@ -260,6 +261,13 @@ struct DashboardView: View {
         
         generalOccupancy = result.rate
         dataDate = result.date
+        
+        // Save to SharedDataManager for Widget
+        SharedDataManager.shared.saveReservoirData(rate: generalOccupancy, city: selectedCity.rawValue)
+        SharedDataManager.shared.saveDailyFootprint(dailyWaterUsage)
+        
+        // Reload widget with new data
+        WidgetCenter.shared.reloadTimelines(ofKind: "SuIzimWidget")
         
         isLoading = false
     }

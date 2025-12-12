@@ -270,31 +270,49 @@ class ReservoirService: NSObject, ObservableObject {
     private func scrapeAnkaraData() async -> (Double, String)? {
         guard let url = URL(string: "https://www.aski.gov.tr/tr/Baraj.aspx") else { return nil }
         
-        // Ankara verisi 'data-percent' attribute içinde saklanıyor. innerText yerine innerHTML bakalım.
+        // Ankara verisi 'data-percent' attribute içinde saklanıyor
         return await scrapeWebsite(url: url, script: "document.body.innerHTML") { html in
-            // Search for: data-percent="13.95"
-            // specifically for BarajOrani1 which seems to be the main one
-            let pattern = #"id="BarajOrani1".*?data-percent="(\d{1,2}[.,]\d{2})""#
-            
-            if html.range(of: pattern, options: .regularExpression) != nil {
-               // Extract the capture group manually since Swift Regex finding is text based
-               // Pattern matching in strings for capture groups needs simpler approach if we just want the number
+            // Pattern 1: BarajOrani1 elementinden data-percent çek
+            let pattern1 = #"id="BarajOrani1"[^>]*data-percent="(\d+(?:[.,]\d+)?)"#
+            if let match = self.firstMatch(in: html, regex: pattern1) {
+                let numberPart = match.replacingOccurrences(of: ",", with: ".")
+                if let value = Double(numberPart) {
+                    print("Ankara Pattern1 Match: \(value)")
+                    return value
+                }
             }
             
-            // Simpler Regex matching
-            // Look for `data-percent="XX.XX"` followed by `BarajOrani1` check or generic.
-            // Let's rely on the specific ID `BarajOrani1` proximity.
-            
-            // Regex: id="BarajOrani1" ... (anything) ... data-percent="13.95"
-            // OR: data-percent="13.95" ... id="BarajOrani1" 
-            // The HTML was: <div id="BarajOrani1" class="..." data-percent="13.95" ...>
-            
-            let idPattern = #"id="BarajOrani1"[^>]*data-percent="(\d+(?:[.,]\d+)?)""#
-            if let match = self.firstMatch(in: html, regex: idPattern) {
-                 let numberPart = match.replacingOccurrences(of: ",", with: ".")
-                 return Double(numberPart)
+            // Pattern 2: Genel doluluk oranı için data-percent arama (herhangi bir yerde)
+            let pattern2 = #"data-percent="(\d+(?:[.,]\d+)?)"#
+            if let match = self.firstMatch(in: html, regex: pattern2) {
+                let numberPart = match.replacingOccurrences(of: ",", with: ".")
+                if let value = Double(numberPart) {
+                    print("Ankara Pattern2 Match: \(value)")
+                    return value
+                }
             }
             
+            // Pattern 3: %XX.XX formatında arama
+            let pattern3 = #"%\s*(\d+(?:[.,]\d+)?)\s*"#
+            if let match = self.firstMatch(in: html, regex: pattern3) {
+                let numberPart = match.replacingOccurrences(of: ",", with: ".")
+                if let value = Double(numberPart) {
+                    print("Ankara Pattern3 Match: \(value)")
+                    return value
+                }
+            }
+            
+            // Pattern 4: Doluluk Oranı: XX.XX şeklinde metin arama
+            let pattern4 = #"(?:doluluk|oran)[^0-9]*(\d+(?:[.,]\d+)?)"#
+            if let match = self.firstMatch(in: html, regex: pattern4) {
+                let numberPart = match.replacingOccurrences(of: ",", with: ".")
+                if let value = Double(numberPart) {
+                    print("Ankara Pattern4 Match: \(value)")
+                    return value
+                }
+            }
+            
+            print("Ankara: No pattern matched")
             return nil
         }
     }
@@ -366,9 +384,35 @@ extension ReservoirService: WKNavigationDelegate {
     // Tekil veri çekme (İstanbul/Ankara)
     private func extractData(from webView: WKWebView) {
         let isAnkara = webView.url?.absoluteString.contains("aski.gov.tr") ?? false
-        // For Ankara, fetch the specific Element IDs directly as JSON
+        
+        // For Ankara, try multiple possible element IDs and also get data-percent attribute
         let script = isAnkara 
-            ? "JSON.stringify({ total: document.getElementById('LabelBarajOrani1')?.innerText, active: document.getElementById('LabelBarajOrani')?.innerText })" 
+            ? """
+            (function() {
+                var result = {};
+                // Try label elements
+                var label1 = document.getElementById('LabelBarajOrani1');
+                var label2 = document.getElementById('LabelBarajOrani');
+                result.labelTotal = label1 ? label1.innerText : null;
+                result.labelActive = label2 ? label2.innerText : null;
+                
+                // Try data-percent attribute on circle elements
+                var circles = document.querySelectorAll('[data-percent]');
+                result.dataPercents = [];
+                circles.forEach(function(el) {
+                    result.dataPercents.push(el.getAttribute('data-percent'));
+                });
+                
+                // Try BarajOrani1 element
+                var orani1 = document.getElementById('BarajOrani1');
+                result.orani1Percent = orani1 ? orani1.getAttribute('data-percent') : null;
+                
+                // Get entire innerHTML for debugging (first 2000 chars)
+                result.htmlSample = document.body.innerHTML.substring(0, 2000);
+                
+                return JSON.stringify(result);
+            })()
+            """
             : "document.body.innerText"
         
         webView.evaluateJavaScript(script) { [weak self] (result, error) in
@@ -394,21 +438,39 @@ extension ReservoirService: WKNavigationDelegate {
                         value = Double(match)
                     }
                 } else if url.contains("aski.gov.tr") {
-                    // Ankara uses JSON -> resultString is JSON
-                    // Parse JSON manually or with regex
-                    // resultString: {"total":"13.05 %","active":"1.66 %"}
+                    // Ankara uses complex JSON with multiple possible sources
+                    print("Ankara Raw Response: \(resultString)")
                     
-                    // Regex to find "total":"13.05 %"
-                    let pattern = #""total":"\s*(\d+[.,]?\d*)\s*%"#
-                    if let range = resultString.range(of: pattern, options: .regularExpression) {
-                         let matchSub = String(resultString[range])
-                         let numberPattern = #"(\d+(?:[.,]\d+)?)"#
-                         if let numRange = matchSub.range(of: numberPattern, options: .regularExpression) {
-                             let numberPart = String(matchSub[numRange]).replacingOccurrences(of: ",", with: ".")
-                             value = Double(numberPart)
-                         }
-                    } else {
-                         print("Ankara JSON Parse Failed: \(resultString)")
+                    // Try 1: orani1Percent (data-percent attribute)
+                    let pattern1 = #""orani1Percent"\s*:\s*"(\d+(?:[.,]\d+)?)""#
+                    if let match = self?.firstMatch(in: resultString, regex: pattern1) {
+                        let numberPart = match.replacingOccurrences(of: ",", with: ".")
+                        value = Double(numberPart)
+                        print("Ankara - Found orani1Percent: \(value ?? 0)")
+                    }
+                    
+                    // Try 2: dataPercents array - first value
+                    if value == nil {
+                        let pattern2 = #""dataPercents"\s*:\s*\[\s*"(\d+(?:[.,]\d+)?)""#
+                        if let match = self?.firstMatch(in: resultString, regex: pattern2) {
+                            let numberPart = match.replacingOccurrences(of: ",", with: ".")
+                            value = Double(numberPart)
+                            print("Ankara - Found dataPercents[0]: \(value ?? 0)")
+                        }
+                    }
+                    
+                    // Try 3: labelTotal (LabelBarajOrani1)
+                    if value == nil {
+                        let pattern3 = #""labelTotal"\s*:\s*"(\d+(?:[.,]\d+)?)\s*%?""#
+                        if let match = self?.firstMatch(in: resultString, regex: pattern3) {
+                            let numberPart = match.replacingOccurrences(of: ",", with: ".")
+                            value = Double(numberPart)
+                            print("Ankara - Found labelTotal: \(value ?? 0)")
+                        }
+                    }
+                    
+                    if value == nil {
+                        print("Ankara: All patterns failed")
                     }
                 }
                 

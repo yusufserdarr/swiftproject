@@ -111,115 +111,172 @@ struct ActivityInputView: View {
 
 import SwiftUI
 import SwiftData
+import WidgetKit
 
+// YENİ: Arama işleminin yapılacağı özel seçim sayfası
+struct SearchableActivityList: View {
+    let items: [String]         // Listelenecek veriler
+    @Binding var selection: String // Seçilen veriyi geri göndermek için
+    @Environment(\.dismiss) private var dismiss // Seçince sayfayı kapatmak için
+    @State private var searchText = "" // Arama metni
+    
+    // Arama filtresi
+    var filteredItems: [String] {
+        if searchText.isEmpty {
+            return items
+        } else {
+            return items.filter { $0.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
+    
+    var body: some View {
+        List {
+            ForEach(filteredItems, id: \.self) { item in
+                Button {
+                    selection = item // Seçimi güncelle
+                    dismiss()        // Sayfayı kapat
+                } label: {
+                    HStack {
+                        Text(item)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if item == selection {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+            }
+        }
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Aktivite veya ürün ara...")
+        .navigationTitle("Seçim Yap")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// ANA GÖRÜNÜM
 struct ActivityInputView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
-    @State private var selectedActivity = "Duş"
-    @State private var amount: Double = 10.0
+    enum Category: String, CaseIterable {
+        case home = "NE YAPTINIZ"
+        case virtual = "NE YEDİNİZ/İÇTİNİZ"
+    }
     
-    let activities = WaterCalculator.orderedActivities
+    @State private var selectedCategory: Category = .home
+    @State private var selectedActivity = "Duş"
+    @State private var amount: Double = 1.0
+    
+    // Kategoriye göre listeyi getir
+    var currentList: [String] {
+        switch selectedCategory {
+        case .home: return WaterCalculator.homeActivities.keys.sorted()
+        case .virtual: return WaterCalculator.virtualActivities.keys.sorted()
+        }
+    }
     
     var calculatedUsage: Double {
         WaterCalculator.calculateWaterUsage(activityName: selectedActivity, amount: amount)
     }
     
-    // 1. KULLANICIYA SORULACAK SORU (Başlık)
-    // "Miktar" yerine artık insani sorular soruyoruz.
+    // BAŞLIKLAR
     var headerTitle: String {
+        if selectedCategory == .virtual { return "Ne kadar tükettin?" }
         switch selectedActivity {
-        case "Duş":
-            return "Duş ne kadar sürdü?"
-        case "Bulaşık (Elde)":
-            return "Bulaşıkları kaç dakika yıkadın?" //
-        case "Bulaşık (Makine)", "Çamaşır (Makine)":
-            return "Makineyi kaç kez çalıştırdın?"
+        case "Duş", "Sıcak Su Bekleme","Araba Yıkama","Bahçe Yıkama": return "Süre ne kadar?"
+        case "Prompt": return "Kaç kere?"
         case "Sifon":
-            return "Sifona kaç kez bastın?"
-        case "Araba Yıkama":
-            return "Arabayı kaç dakika yıkadın?"
-        case "Prompt":
-            return "Kaç defa prompt girdin?"
-        default:
-            return "Miktar nedir?"
+            return "Kaç kez?"
+        default: return "Miktar nedir?"
         }
     }
     
-    // 2. SAYININ YANINDAKİ EK (Suffix)
-    // Sadece sayı değil, ne olduğu belli olsun (10 dk, 3 kere vb.)
+    // BİRİMLER (Suffix)
     var amountSuffix: String {
+        if selectedCategory == .virtual {
+            if selectedActivity.contains("Kahve") || selectedActivity.contains("Çay") || selectedActivity.contains("Süt") { return "bardak" }
+            if selectedActivity.contains("Çikolata") { return "paket" }
+            if selectedActivity.contains("Tişört") || selectedActivity.contains("Pantolon") { return "adet" }
+            return "porsiyon/adet"
+        }
         switch selectedActivity {
-        case "Duş", "Diş Fırçalama","Çamaşır (Makine)","Araba Yıkama","Bulaşık (Elde)":
-            return "dakika"
+        case "Duş", "Sıcak Su Bekleme", "Diş Fırçalama (Musluk Açık)","Araba Yıkama","Bahçe Yıkama": return "dakika"
         case "Sifon":
             return "basış"
-        case "Bulaşık (Makine)":
-            return "çalıştırma"
-        default:
+        case "Prompt":
             return "kere"
+        default: return "kez"
         }
     }
     
-    // 3. SLIDER ARALIĞI (Dinamik)
-    // Az önceki mantığı koruyoruz, aktiviteye göre mantıklı sınırlar.
+    // SLIDER ARALIĞI
     var sliderRange: ClosedRange<Double> {
-        switch selectedActivity {
-        case "Duş": return 1...120
-        case "Diş Fırçalama": return 1...10
-        case "Araba Yıkama": return 1...60
-        case "Sifon" : return 1...20
-        case "Prompt" : return 1...2000
-        default: return 1...15 // Makineler ve Elde bulaşık için
-        }
+        if selectedCategory == .virtual { return 1...10 }
+        if selectedActivity == "Duş" { return 1...40 }
+        if selectedActivity == "Prompt" { return 1...2000 }
+        if selectedActivity == "Çamaşır Makinesi" { return 1...300 }
+        if selectedActivity == "Araba Yıkama" { return 1...40}
+        return 1...20
     }
     
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Ne Yaptın?")) {
-                    Picker("Aktivite", selection: $selectedActivity) {
-                        ForEach(activities, id: \.self) { activity in
-                            Text(activity).tag(activity)
+                // 1. KATEGORİ
+                Section {
+                    Picker("Kategori", selection: $selectedCategory) {
+                        ForEach(Category.allCases, id: \.self) { cat in
+                            Text(cat.rawValue).tag(cat)
                         }
                     }
-                    .pickerStyle(.navigationLink)
-                    .onChange(of: selectedActivity) {
-                        // Aktivite değişince varsayılan değerleri mantıklı hale getir
-                        if selectedActivity == "Duş" { amount = 10.0 }
-                        else if selectedActivity == "Diş Fırçalama" { amount = 2.0 }
-                        else { amount = 1.0 }
+                    .pickerStyle(.segmented)
+                    .onChange(of: selectedCategory) {
+                        // Kategori değişince listedeki ilk elemanı seç (boş kalmasın)
+                        selectedActivity = currentList.first ?? ""
+                        amount = 1.0
                     }
                 }
                 
-                // BURASI DEĞİŞTİ: Artık dinamik başlık kullanıyoruz
+                // 2. AKTİVİTE SEÇİMİ (ARAMALI)
+                Section(header: Text("Seçim")) {
+                    // Burası artık Picker değil, tıklayınca açılan bir NavigationLink
+                    NavigationLink {
+                        SearchableActivityList(items: currentList, selection: $selectedActivity)
+                    } label: {
+                        HStack {
+                            Text("Ne Yaptın?")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text(selectedActivity) // Seçili olanı sağda göster
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                
+                // 3. MİKTAR
                 Section(header: Text(headerTitle)) {
                     HStack {
-                        // Sayı ve Suffix yan yana: "10 dakika" veya "3 kere"
                         Text("\(Int(amount)) \(amountSuffix)")
                             .font(.system(.body, design: .rounded))
                             .bold()
-                            .foregroundStyle(.blue)
-                            .frame(width: 80, alignment: .leading) // Hizalama düzgün dursun diye
+                            .foregroundStyle(selectedCategory == .virtual ? .orange : .blue)
+                            .frame(width: 100, alignment: .leading)
                         
                         Slider(value: $amount, in: sliderRange, step: 1)
-                    }
-                    
-                    // Ekstra Açıklama (İsteğe bağlı, kafa karışıklığını tamamen bitirir)
-                    if selectedActivity == "Bulaşık (Elde)" {
-                        Text("Not: Tek bir tabak değil, tüm bulaşık yıkama seansı kastedilmektedir.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .tint(selectedCategory == .virtual ? .orange : .blue)
                     }
                 }
                 
-                Section(header: Text("Tahmini Tüketim")) {
+                // 4. SONUÇ
+                Section(header: Text("Tahmini Su Ayak İzi")) {
                     HStack {
-                        Text("Su Ayak İzi:")
+                        Text("Toplam Tüketim:")
                         Spacer()
-                        Text(String(format: "%.1f Litre", calculatedUsage))
+                        Text(String(format: "%.0f Litre", calculatedUsage))
+                            .font(.title3)
                             .bold()
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(calculatedUsage > 1000 ? .red : .primary)
                     }
                 }
                 
@@ -229,7 +286,7 @@ struct ActivityInputView: View {
                             .frame(maxWidth: .infinity)
                             .bold()
                     }
-                    .listRowBackground(Color.blue)
+                    .listRowBackground(selectedCategory == .virtual ? Color.orange : Color.blue)
                     .foregroundStyle(.white)
                 }
             }
@@ -237,9 +294,7 @@ struct ActivityInputView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("İptal") {
-                        dismiss()
-                    }
+                    Button("İptal") { dismiss() }
                 }
             }
         }
@@ -249,10 +304,18 @@ struct ActivityInputView: View {
         let newActivity = ActivityLog(
             name: selectedActivity,
             amount: amount,
-            unit: amountSuffix, // Veritabanına da "dakika", "kere" olarak kaydedelim
+            unit: amountSuffix,
             totalWaterLiters: calculatedUsage
         )
         modelContext.insert(newActivity)
+        
+        // Update widget data
+        let currentFootprint = SharedDataManager.shared.dailyFootprint
+        SharedDataManager.shared.saveDailyFootprint(currentFootprint + calculatedUsage)
+        
+        // Reload widget
+        WidgetCenter.shared.reloadTimelines(ofKind: "SuIzimWidget")
+        
         dismiss()
     }
 }
