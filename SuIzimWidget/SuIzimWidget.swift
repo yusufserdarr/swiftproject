@@ -105,8 +105,8 @@ struct SuIzimWidgetEntryView: View {
                     .rotationEffect(.degrees(-90))
                 
                 VStack(spacing: 0) {
-                    Text("\(Int(entry.rate))")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                    Text(String(format: "%.1f", floor(entry.rate * 10) / 10))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
                     Text("%")
                         .font(.caption2)
                         .foregroundStyle(.secondary)

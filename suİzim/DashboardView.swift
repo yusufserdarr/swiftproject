@@ -106,7 +106,7 @@ struct DashboardView: View {
                                             .rotationEffect(Angle(degrees: 270.0))
                                             .animation(.linear, value: generalOccupancy)
                                         
-                                        Text(String(format: "%%%.1f", generalOccupancy))
+                                        Text(String(format: "%%%.1f", floor(generalOccupancy * 10) / 10))
                                             .font(.largeTitle)
                                             .bold()
                                     }
@@ -136,7 +136,7 @@ struct DashboardView: View {
                                 // List of Dams (For Izmir or if Istanbul adds individual data)
                                 HStack {
                                     Spacer()
-                                    Text(String(format: "Ort. %%%.1f", generalOccupancy))
+                                    Text(String(format: "Ort. %%%.1f", floor(generalOccupancy * 10) / 10))
                                         .font(.subheadline)
                                         .bold()
                                         .padding(.horizontal, 12)
