@@ -270,49 +270,44 @@ class ReservoirService: NSObject, ObservableObject {
     private func scrapeAnkaraData() async -> (Double, String)? {
         guard let url = URL(string: "https://www.aski.gov.tr/tr/Baraj.aspx") else { return nil }
         
-        // Ankara verisi 'data-percent' attribute içinde saklanıyor
-        return await scrapeWebsite(url: url, script: "document.body.innerHTML") { html in
-            // Pattern 1: BarajOrani1 elementinden data-percent çek
-            let pattern1 = #"id="BarajOrani1"[^>]*data-percent="(\d+(?:[.,]\d+)?)"#
-            if let match = self.firstMatch(in: html, regex: pattern1) {
+        // Ankara için innerText kullan, TOPLAM doluluk oranını ara (Aktif değil)
+        return await scrapeWebsite(url: url) { text in
+            print("Ankara innerText (first 800 chars): \(String(text.prefix(800)))")
+            
+            // "Toplam Doluluk Oranı" yazısını bul ve yanındaki yüzdeyi al
+            // Örnek: "Toplam Doluluk Oranı % 12.92"
+            
+            // Pattern 1: "Toplam Doluluk Oranı" + herhangi karakterler + % + sayı
+            let pattern1 = #"[Tt]oplam\s+[Dd]oluluk[^%]*%\s*(\d{1,3}[.,]\d{1,2})"#
+            if let match = self.firstMatch(in: text, regex: pattern1) {
                 let numberPart = match.replacingOccurrences(of: ",", with: ".")
                 if let value = Double(numberPart) {
-                    print("Ankara Pattern1 Match: \(value)")
+                    print("Ankara Toplam Match: \(value)")
                     return value
                 }
             }
             
-            // Pattern 2: Genel doluluk oranı için data-percent arama (herhangi bir yerde)
-            let pattern2 = #"data-percent="(\d+(?:[.,]\d+)?)"#
-            if let match = self.firstMatch(in: html, regex: pattern2) {
+            // Pattern 2: "Toplam Doluluk Oranı" + sayı + %
+            let pattern2 = #"[Tt]oplam\s+[Dd]oluluk[^0-9]*(\d{1,3}[.,]\d{1,2})\s*%"#
+            if let match = self.firstMatch(in: text, regex: pattern2) {
                 let numberPart = match.replacingOccurrences(of: ",", with: ".")
                 if let value = Double(numberPart) {
-                    print("Ankara Pattern2 Match: \(value)")
+                    print("Ankara Toplam Pattern2 Match: \(value)")
                     return value
                 }
             }
             
-            // Pattern 3: %XX.XX formatında arama
-            let pattern3 = #"%\s*(\d+(?:[.,]\d+)?)\s*"#
-            if let match = self.firstMatch(in: html, regex: pattern3) {
+            // Fallback: Sayfadaki İLK yüzde değeri (genelde Toplam ilk sırada)
+            let fallbackPattern = #"%\s*(\d{1,3}[.,]\d{1,2})"#
+            if let match = self.firstMatch(in: text, regex: fallbackPattern) {
                 let numberPart = match.replacingOccurrences(of: ",", with: ".")
                 if let value = Double(numberPart) {
-                    print("Ankara Pattern3 Match: \(value)")
+                    print("Ankara Fallback Match: \(value)")
                     return value
                 }
             }
             
-            // Pattern 4: Doluluk Oranı: XX.XX şeklinde metin arama
-            let pattern4 = #"(?:doluluk|oran)[^0-9]*(\d+(?:[.,]\d+)?)"#
-            if let match = self.firstMatch(in: html, regex: pattern4) {
-                let numberPart = match.replacingOccurrences(of: ",", with: ".")
-                if let value = Double(numberPart) {
-                    print("Ankara Pattern4 Match: \(value)")
-                    return value
-                }
-            }
-            
-            print("Ankara: No pattern matched")
+            print("Ankara: No pattern matched in innerText")
             return nil
         }
     }
@@ -383,41 +378,13 @@ extension ReservoirService: WKNavigationDelegate {
     
     // Tekil veri çekme (İstanbul/Ankara)
     private func extractData(from webView: WKWebView) {
-        let isAnkara = webView.url?.absoluteString.contains("aski.gov.tr") ?? false
-        
-        // For Ankara, try multiple possible element IDs and also get data-percent attribute
-        let script = isAnkara 
-            ? """
-            (function() {
-                var result = {};
-                // Try label elements
-                var label1 = document.getElementById('LabelBarajOrani1');
-                var label2 = document.getElementById('LabelBarajOrani');
-                result.labelTotal = label1 ? label1.innerText : null;
-                result.labelActive = label2 ? label2.innerText : null;
-                
-                // Try data-percent attribute on circle elements
-                var circles = document.querySelectorAll('[data-percent]');
-                result.dataPercents = [];
-                circles.forEach(function(el) {
-                    result.dataPercents.push(el.getAttribute('data-percent'));
-                });
-                
-                // Try BarajOrani1 element
-                var orani1 = document.getElementById('BarajOrani1');
-                result.orani1Percent = orani1 ? orani1.getAttribute('data-percent') : null;
-                
-                // Get entire innerHTML for debugging (first 2000 chars)
-                result.htmlSample = document.body.innerHTML.substring(0, 2000);
-                
-                return JSON.stringify(result);
-            })()
-            """
-            : "document.body.innerText"
+        // Artık hem İstanbul hem Ankara için innerText kullanıyoruz
+        let script = "document.body.innerText"
         
         webView.evaluateJavaScript(script) { [weak self] (result, error) in
             guard let resultString = result as? String, error == nil, let url = webView.url?.absoluteString else {
                 // Fail safe
+                print("extractData failed: \(error?.localizedDescription ?? "unknown")")
                 if let c = self?.continuation {
                     self?.continuation = nil
                     c.resume(returning: nil)
@@ -430,48 +397,35 @@ extension ReservoirService: WKNavigationDelegate {
                 var value: Double?
                 let date = Date().formatted(date: .numeric, time: .omitted)
                 
-                if url.contains("iski.istanbul") {
-                    // Istanbul uses innerText -> resultString is plain text
-                    let pattern = #"(\d{1,2}[.,]\d{2})"#
-                    if let range = resultString.range(of: pattern, options: .regularExpression) {
-                        let match = String(resultString[range]).replacingOccurrences(of: ",", with: ".")
-                        value = Double(match)
+                // Hem İstanbul hem Ankara için aynı pattern - % XX.XX formatı
+                // Pattern 1: "% 12.92" veya "% 35,40"
+                let pattern1 = #"%\s*(\d{1,3}[.,]\d{1,2})"#
+                if let range = resultString.range(of: pattern1, options: .regularExpression) {
+                    let matchString = String(resultString[range])
+                    let numberPattern = #"(\d{1,3}[.,]\d{1,2})"#
+                    if let numberRange = matchString.range(of: numberPattern, options: .regularExpression) {
+                        let numberStr = String(matchString[numberRange]).replacingOccurrences(of: ",", with: ".")
+                        value = Double(numberStr)
+                        print("Pattern1 Match for \(url): \(value ?? 0)")
                     }
-                } else if url.contains("aski.gov.tr") {
-                    // Ankara uses complex JSON with multiple possible sources
-                    print("Ankara Raw Response: \(resultString)")
-                    
-                    // Try 1: orani1Percent (data-percent attribute)
-                    let pattern1 = #""orani1Percent"\s*:\s*"(\d+(?:[.,]\d+)?)""#
-                    if let match = self?.firstMatch(in: resultString, regex: pattern1) {
-                        let numberPart = match.replacingOccurrences(of: ",", with: ".")
-                        value = Double(numberPart)
-                        print("Ankara - Found orani1Percent: \(value ?? 0)")
-                    }
-                    
-                    // Try 2: dataPercents array - first value
-                    if value == nil {
-                        let pattern2 = #""dataPercents"\s*:\s*\[\s*"(\d+(?:[.,]\d+)?)""#
-                        if let match = self?.firstMatch(in: resultString, regex: pattern2) {
-                            let numberPart = match.replacingOccurrences(of: ",", with: ".")
-                            value = Double(numberPart)
-                            print("Ankara - Found dataPercents[0]: \(value ?? 0)")
+                }
+                
+                // Pattern 2: "12.92 %" formatı (genellikle Ankara)
+                if value == nil {
+                    let pattern2 = #"(\d{1,3}[.,]\d{1,2})\s*%"#
+                    if let range = resultString.range(of: pattern2, options: .regularExpression) {
+                        let matchString = String(resultString[range])
+                        let numberPattern = #"(\d{1,3}[.,]\d{1,2})"#
+                        if let numberRange = matchString.range(of: numberPattern, options: .regularExpression) {
+                            let numberStr = String(matchString[numberRange]).replacingOccurrences(of: ",", with: ".")
+                            value = Double(numberStr)
+                            print("Pattern2 Match for \(url): \(value ?? 0)")
                         }
                     }
-                    
-                    // Try 3: labelTotal (LabelBarajOrani1)
-                    if value == nil {
-                        let pattern3 = #""labelTotal"\s*:\s*"(\d+(?:[.,]\d+)?)\s*%?""#
-                        if let match = self?.firstMatch(in: resultString, regex: pattern3) {
-                            let numberPart = match.replacingOccurrences(of: ",", with: ".")
-                            value = Double(numberPart)
-                            print("Ankara - Found labelTotal: \(value ?? 0)")
-                        }
-                    }
-                    
-                    if value == nil {
-                        print("Ankara: All patterns failed")
-                    }
+                }
+                
+                if value == nil {
+                    print("No pattern matched for \(url). Text sample: \(String(resultString.prefix(300)))")
                 }
                 
                 let finalValue = value
