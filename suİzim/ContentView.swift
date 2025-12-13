@@ -27,25 +27,23 @@ struct ContentView: View {
                 }
                 .tag(1)
             
-            ChatbotView()
+            AchievementsView()
                 .tabItem {
-                    Label("Asistan", systemImage: "message.fill")
+                    Label("Başarılar", systemImage: "trophy.fill")
                 }
                 .tag(2)
         }
         .overlay(alignment: .bottom) {
-            if selection != 2 { // Hide on Chatbot tab
-                Button(action: { showInputSheet = true }) {
-                    Image(systemName: "plus")
-                        .font(.title.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding()
-                        .background(Color.blue)
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
-                }
-                .padding(.bottom, 60)
+            Button(action: { showInputSheet = true }) {
+                Image(systemName: "plus")
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding()
+                    .background(Color.blue)
+                    .clipShape(Circle())
+                    .shadow(radius: 4)
             }
+            .padding(.bottom, 60)
         }
         .sheet(isPresented: $showInputSheet) {
             ActivityInputView()
