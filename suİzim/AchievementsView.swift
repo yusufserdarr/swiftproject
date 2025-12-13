@@ -29,12 +29,13 @@ struct Achievement: Identifiable, Codable {
 @Observable
 class AchievementManager {
     var achievements: [Achievement] = [
+        // --- Başlangıç ---
         Achievement(
             title: "Başlangıç",
             description: "İlk verini kaydet",
-            iconName: "drop.fill",
+            iconName: "flag.fill",
             targetValue: 1,
-            type: .totalSavings
+            type: .totalSavings // Generic type usage
         ),
         Achievement(
             title: "Tasarruf Çırağı",
@@ -43,31 +44,58 @@ class AchievementManager {
             targetValue: 500,
             type: .totalSavings
         ),
+        
+        // --- Alışkanlık ---
         Achievement(
-            title: "Su Koruyucusu",
-            description: "Toplam 5000L su kullanımı kaydet",
-            iconName: "shield.fill",
-            targetValue: 5000,
-            type: .totalSavings
-        ),
-        Achievement(
-            title: "İstikrar",
-            description: "3 gün üst üste veri gir",
-            iconName: "flame.fill",
+            title: "Barista Diyeti",
+            description: "3 gün üst üste kahve içme",
+            iconName: "cup.and.saucer.fill",
             targetValue: 3,
             type: .streak
         ),
         Achievement(
-            title: "Süper Seri",
-            description: "7 gün üst üste veri gir",
-            iconName: "star.fill",
-            targetValue: 7,
-            type: .streak
+            title: "Yeşil Dostu",
+            description: "Bugün hiç et yemedin!",
+            iconName: "leaf.fill",
+            targetValue: 1,
+            type: .dailyLimit
         ),
         Achievement(
-            title: "Hedefçi",
-            description: "Bir gün 150L altında kal",
-            iconName: "target",
+            title: "Eski Toprak",
+            description: "30 gündür kıyafet almadın",
+            iconName: "tshirt.fill",
+            targetValue: 30,
+            type: .streak
+        ),
+        
+        // --- Zorlu ---
+        Achievement(
+            title: "Çöl Bedevisi",
+            description: "Günlük tüketim 80L altında",
+            iconName: "sun.max.fill",
+            targetValue: 1,
+            type: .dailyLimit
+        ),
+        Achievement(
+            title: "Hızlı Duşçu",
+            description: "4 dakikadan kısa duş aldın",
+            iconName: "timer",
+            targetValue: 1,
+            type: .dailyLimit
+        ),
+        
+        // --- Eğlence ---
+        Achievement(
+            title: "Erkenci Kuş",
+            description: "07:00 - 09:00 arası veri girişi",
+            iconName: "sunrise.fill",
+            targetValue: 1,
+            type: .dailyLimit
+        ),
+        Achievement(
+            title: "Gece Bekçisi",
+            description: "00:00 - 03:00 arası veri girişi",
+            iconName: "moon.stars.fill",
             targetValue: 1,
             type: .dailyLimit
         )
@@ -81,77 +109,126 @@ class AchievementManager {
     }
     
     func updateProgress(activities: [ActivityLog]) {
-        // 1. Toplam Kullanım (Total Savings mantığı yerine Toplam Kullanım Takibi olarak düşünüldü)
-        // Not: Gerçek tasarruf için 'standart kullanım - benim kullanımım' gerekir ama şimdilik toplam veri girişi üzerinden gidiyoruz.
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let todayActivities = activities.filter { calendar.isDateInToday($0.date) }
+        
+        // 1. Toplam Veri (Başlangıç & Çırak)
+        let totalLogs = Double(activities.count)
+        updateAchievement(title: "Başlangıç", current: totalLogs) // Basit count
+        
         let totalLiters = activities.reduce(0) { $0 + $1.totalWaterLiters }
+        updateAchievement(title: "Tasarruf Çırağı", current: totalLiters)
         
-        updateAchievement(type: .totalSavings) { achievement in
-            achievement.currentValue = totalLiters
-        }
+        // 2. Barista Diyeti (Son 3 günde kahve yok)
+        // Logic: Son 3 günü tarar, kahve varsa sıfırlar, yoksa 3 olur.
+        let coffeeFreeStreak = calculateCoffeeFreeStreak(activities: activities)
+        updateAchievement(title: "Barista Diyeti", current: Double(coffeeFreeStreak))
         
-        // 2. Seri (Streak)
-        let streak = calculateStreak(activities: activities)
-        updateAchievement(type: .streak) { achievement in
-            achievement.currentValue = Double(streak)
-        }
+        // 3. Yeşil Dostu (Bugün et yok)
+        let meatFree = !todayActivities.contains { isMeat($0.name) } && !todayActivities.isEmpty
+        updateAchievement(title: "Yeşil Dostu", current: meatFree ? 1 : 0)
         
-        // 3. Günlük Hedef (150L altı)
-        // En az 1 gün 150L altı varsa
-        let daysUnderLimit = calculateDaysUnderLimit(activities: activities)
-        updateAchievement(type: .dailyLimit) { achievement in
-            if daysUnderLimit > 0 {
-                achievement.currentValue = 1 // Unlocked
-            }
+        // 4. Eski Toprak (Son 30 gün kıyafet yok)
+        let shopFreeDays = calculateShoppingFreeDays(activities: activities)
+        updateAchievement(title: "Eski Toprak", current: Double(shopFreeDays))
+        
+        // 5. Çöl Bedevisi (Bugün < 80L)
+        let todayTotal = todayActivities.reduce(0) { $0 + $1.totalWaterLiters }
+        let desertMode = todayTotal > 0 && todayTotal < 80
+        updateAchievement(title: "Çöl Bedevisi", current: desertMode ? 1 : 0)
+        
+        // 6. Hızlı Duşçu (Duş < 4dk)
+        let fastShower = activities.contains { $0.name == "Duş" && $0.amount < 4 }
+        updateAchievement(title: "Hızlı Duşçu", current: fastShower ? 1 : 0)
+        
+        // 7. Erkenci Kuş (07-09)
+        let earlyBird = activities.contains {
+            let hour = calendar.component(.hour, from: $0.date)
+            return hour >= 7 && hour < 9
         }
+        updateAchievement(title: "Erkenci Kuş", current: earlyBird ? 1 : 0)
+        
+        // 8. Gece Bekçisi (00-03)
+        let nightOwl = activities.contains {
+            let hour = calendar.component(.hour, from: $0.date)
+            return hour >= 0 && hour < 3
+        }
+        updateAchievement(title: "Gece Bekçisi", current: nightOwl ? 1 : 0)
         
         saveProgress()
     }
     
-    private func updateAchievement(type: Achievement.AchievementType, update: (inout Achievement) -> Void) {
-        for i in 0..<achievements.count {
-            if achievements[i].type == type {
-                update(&achievements[i])
-                
-                // Unlock check
-                if achievements[i].currentValue >= achievements[i].targetValue {
-                    achievements[i].isUnlocked = true
-                }
+    private func updateAchievement(title: String, current: Double) {
+        if let index = achievements.firstIndex(where: { $0.title == title }) {
+            // Sadece artış varsa güncelle (Progress düşmesi moral bozmasın diye genelde Max tutulur, ama streak bozulabilir)
+            // Streak türü hariç diğerlerinde Max tutalım.
+            // Ama burada basitçe overwrite yapıyoruz, Streak bozulursa 0 olur.
+            achievements[index].currentValue = current
+            if achievements[index].currentValue >= achievements[index].targetValue {
+                achievements[index].isUnlocked = true
             }
         }
     }
     
-    private func calculateStreak(activities: [ActivityLog]) -> Int {
-        // Basit streak hesaplama
-        let sortedDates = Set(activities.map { Calendar.current.startOfDay(for: $0.date) }).sorted(by: >)
+    // --- Helpers ---
+    
+    private func isMeat(_ name: String) -> Bool {
+        let meats = ["Hamburger", "Sığır", "Tavuk", "Kebap", "Et", "Sucuk", "Salam"]
+        return meats.contains { name.contains($0) }
+    }
+    
+    private func isClothing(_ name: String) -> Bool {
+        let clothes = ["Tişört", "Pantolon", "Ayakkabı", "Gömlek", "Kazak"]
+        return clothes.contains { name.contains($0) }
+    }
+    
+    private func calculateCoffeeFreeStreak(activities: [ActivityLog]) -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
         var streak = 0
-        var currentDate = Calendar.current.startOfDay(for: Date())
         
-        // Eğer bugün veri yoksa düne bak, varsa seriyi devam ettir
-        if !sortedDates.contains(currentDate) {
-            currentDate = Calendar.current.date(byAdding: .day, value: -1, to: currentDate)!
-        }
-        
-        for date in sortedDates {
-            if date == currentDate {
+        // Son 3 günü kontrol et
+        for i in 0..<3 {
+            let date = calendar.date(byAdding: .day, value: -i, to: today)!
+            let daysActs = activities.filter { calendar.isDate($0.date, inSameDayAs: date) }
+            let drankCoffee = daysActs.contains { $0.name.contains("Kahve") }
+            
+            if !drankCoffee {
                 streak += 1
-                currentDate = Calendar.current.date(byAdding: .day, value: -1, to: currentDate)!
             } else {
-                break
+                streak = 0 // Kahve içildiyse seri bozulur (son günden başladığımız için direkt 0 diyebiliriz veya zinciri kirar)
+                // Ama "3 gün üst üste" mantığı için: Son 3 günün hepsinde içilmediyse kazanır.
+                // Eğer bugün içtiyse streak 0. Dün içtiyse streak 0.
+                // Burada basitçe: Bugün, Dün, Önceki Gün check ediyoruz.
+                return 0 
             }
         }
         return streak
     }
     
-    private func calculateDaysUnderLimit(activities: [ActivityLog]) -> Int {
-        let grouped = Dictionary(grouping: activities) { Calendar.current.startOfDay(for: $0.date) }
-        var count = 0
-        for (_, dayActs) in grouped {
-            let total = dayActs.reduce(0) { $0 + $1.totalWaterLiters }
-            if total < 150 && total > 0 {
-                count += 1
-            }
+    private func calculateShoppingFreeDays(activities: [ActivityLog]) -> Int {
+        guard !activities.isEmpty else { return 0 } // Hiç aktivite yoksa 0
+        
+        // En eski aktivite tarihine bak
+        // Eğer kullanıcı uygulamayı 30 gündür kullanmıyorsa bu başarım kazanılamaz.
+        guard let firstActivityDate = activities.map({ $0.date }).min() else { return 0 }
+        let daysSinceStart = Calendar.current.dateComponents([.day], from: firstActivityDate, to: Date()).day ?? 0
+        
+        if daysSinceStart < 30 {
+            // Henüz 30 gündür kullanmıyor
+            return daysSinceStart
         }
-        return count
+        
+        // En son alışveriş tarihini bul
+        let shoppings = activities.filter { isClothing($0.name) }
+        guard let lastShop = shoppings.map({ $0.date }).max() else {
+            // Hiç alışveriş yoksa ve 30 gündür kullanıyorsa
+            return daysSinceStart
+        }
+        
+        let daysSinceShop = Calendar.current.dateComponents([.day], from: lastShop, to: Date()).day ?? 0
+        return daysSinceShop
     }
     
     private func saveProgress() {
@@ -163,7 +240,6 @@ class AchievementManager {
     private func loadProgress() {
         if let data = UserDefaults.standard.data(forKey: saveKey),
            let decoded = try? JSONDecoder().decode([Achievement].self, from: data) {
-            // Mevcut tanımları koru, sadece progressleri güncelle (yeni achievement eklenirse diye)
             for savedAch in decoded {
                 if let index = achievements.firstIndex(where: { $0.title == savedAch.title }) {
                     achievements[index].currentValue = savedAch.currentValue
