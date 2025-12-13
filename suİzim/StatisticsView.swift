@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import WidgetKit
 
 struct StatisticsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -9,6 +10,7 @@ struct StatisticsView: View {
     @State private var selectedPeriod: TimePeriod = .week
     
     enum TimePeriod: String, CaseIterable {
+        case day = "Gün"
         case week = "Hafta"
         case month = "Ay"
     }
@@ -39,8 +41,25 @@ struct StatisticsView: View {
         }
     }
     
+    var todayData: [(date: Date, total: Double)] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let todayActivities = activities.filter { calendar.isDate($0.date, inSameDayAs: today) }
+        let total = todayActivities.reduce(0) { $0 + $1.totalWaterLiters }
+        return [(date: today, total: total)]
+    }
+    
+    var todayActivities: [ActivityLog] {
+        let calendar = Calendar.current
+        return activities.filter { calendar.isDateInToday($0.date) }
+    }
+    
     var chartData: [(date: Date, total: Double)] {
-        selectedPeriod == .week ? last7DaysData : last30DaysData
+        switch selectedPeriod {
+        case .day: return todayData
+        case .week: return last7DaysData
+        case .month: return last30DaysData
+        }
     }
     
     // Statistics
@@ -76,8 +95,8 @@ struct StatisticsView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
+            List {
+                Section {
                     if activities.isEmpty {
                         ContentUnavailableView(
                             "Henüz Veri Yok",
@@ -93,22 +112,29 @@ struct StatisticsView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .padding(.horizontal)
+                        .listRowSeparator(.hidden)
+                        .padding(.bottom, 10)
                         
                         // Summary Cards
                         summaryCardsView
+                            .listRowInsets(EdgeInsets()) // Full width for scroll view
+                            .listRowSeparator(.hidden)
                         
                         // Main Chart
                         chartView
-                        
-                        // Activity List
-                        activityListView
+                            .listRowSeparator(.hidden)
+                            .padding(.vertical, 10)
                     }
                 }
-                .padding(.vertical)
+                .listRowBackground(Color.clear)
+                
+                if !activities.isEmpty {
+                    activityListSection
+                }
             }
-            .background(Color(.systemGroupedBackground))
+            .listStyle(.insetGrouped)
             .navigationTitle("İstatistikler")
+            .background(Color(.systemGroupedBackground))
         }
     }
     
@@ -158,46 +184,68 @@ struct StatisticsView: View {
     
     private var chartView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(selectedPeriod == .week ? "Son 7 Gün" : "Son 30 Gün")
+            let chartTitle: String = {
+                switch selectedPeriod {
+                case .day: return "Bugün"
+                case .week: return "Son 7 Gün"
+                case .month: return "Son 30 Gün"
+                }
+            }()
+            
+            Text(chartTitle)
                 .font(.headline)
                 .padding(.horizontal)
             
-            Chart(chartData, id: \.date) { item in
-                if selectedPeriod == .week {
-                    BarMark(
-                        x: .value("Tarih", item.date, unit: .day),
-                        y: .value("Litre", item.total)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.blue, .cyan],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                    .cornerRadius(6)
-                } else {
-                    LineMark(
-                        x: .value("Tarih", item.date, unit: .day),
-                        y: .value("Litre", item.total)
-                    )
-                    .foregroundStyle(Color.blue)
-                    .interpolationMethod(.catmullRom)
+            if selectedPeriod == .day {
+                // Günlük görünüm - büyük sayı göster
+                VStack(spacing: 8) {
+                    Text(String(format: "%.0f", totalUsage))
+                        .font(.system(size: 72, weight: .bold, design: .rounded))
+                        .foregroundStyle(.blue)
+                    Text("Litre bugün kullanıldı")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                     
-                    AreaMark(
-                        x: .value("Tarih", item.date, unit: .day),
-                        y: .value("Litre", item.total)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.blue.opacity(0.3), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .interpolationMethod(.catmullRom)
                 }
-            }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+            } else {
+                Chart(chartData, id: \.date) { item in
+                    if selectedPeriod == .week {
+                        BarMark(
+                            x: .value("Tarih", item.date, unit: .day),
+                            y: .value("Litre", item.total)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.blue, .cyan],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                        .cornerRadius(6)
+                    } else {
+                        LineMark(
+                            x: .value("Tarih", item.date, unit: .day),
+                            y: .value("Litre", item.total)
+                        )
+                        .foregroundStyle(Color.blue)
+                        .interpolationMethod(.catmullRom)
+                        
+                        AreaMark(
+                            x: .value("Tarih", item.date, unit: .day),
+                            y: .value("Litre", item.total)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.blue.opacity(0.3), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+                    }
+                }
             .chartXAxis {
                 if selectedPeriod == .week {
                     AxisMarks(values: .stride(by: .day)) { value in
@@ -225,19 +273,22 @@ struct StatisticsView: View {
             .cornerRadius(16)
             .shadow(color: .black.opacity(0.05), radius: 10)
             .padding(.horizontal)
+            }
         }
     }
     
-    // MARK: - Activity List
+    // MARK: - Activity List Section
     
-    private var activityListView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Son Aktiviteler")
-                .font(.headline)
-                .padding(.horizontal)
+    private var activityListSection: some View {
+        Section(header: Text(selectedPeriod == .day ? "Bugünkü Aktiviteler" : "Son Aktiviteler")) {
+            let displayActivities = selectedPeriod == .day ? todayActivities : Array(activities.prefix(15))
             
-            VStack(spacing: 8) {
-                ForEach(activities.prefix(10)) { activity in
+            if displayActivities.isEmpty {
+                Text("Henüz aktivite eklenmemiş")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(displayActivities) { activity in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(activity.name)
@@ -253,12 +304,53 @@ struct StatisticsView: View {
                             .bold()
                             .foregroundStyle(.blue)
                     }
-                    .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(12)
+                }
+                .onDelete { indexSet in
+                    // `displayActivities` üzerinden silme işlemi, ana array için index bulmalıyız
+                    // Ancak onDelete, ForEach'in kullandığı collection üzerindeki indexSet'i verir.
+                    // Burada `displayActivities` computed bir array olduğu için doğrudan silinemez.
+                    // Bu yüzden activity nesnesini bulup context'ten silmeliyiz.
+                    
+                    for index in indexSet {
+                        if index < displayActivities.count {
+                             let activityToDelete = displayActivities[index]
+                             deleteActivity(activityToDelete)
+                        }
+                    }
                 }
             }
-            .padding(.horizontal)
+        }
+    }
+    
+    private func deleteActivity(_ activity: ActivityLog) {
+        withAnimation {
+            modelContext.delete(activity)
+            try? modelContext.save()
+        }
+        
+        // Update widget if the deleted activity was from today
+        if Calendar.current.isDateInToday(activity.date) {
+            updateWidgetData()
+        }
+    }
+    
+    private func updateWidgetData() {
+        Task {
+            // Fetch fresh data to ensure accurate total
+            do {
+                let descriptor = FetchDescriptor<ActivityLog>()
+                let allActivities = try modelContext.fetch(descriptor)
+                
+                let calendar = Calendar.current
+                let todayActivities = allActivities.filter { calendar.isDateInToday($0.date) }
+                let total = todayActivities.reduce(0) { $0 + $1.totalWaterLiters }
+                
+                print("Widget updated after delete. New total: \(total)")
+                SharedDataManager.shared.saveDailyFootprint(total)
+                WidgetCenter.shared.reloadTimelines(ofKind: "SuIzimWidget")
+            } catch {
+                print("Failed to update widget: \(error)")
+            }
         }
     }
 }
