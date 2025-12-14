@@ -309,14 +309,51 @@ struct ActivityInputView: View {
         )
         modelContext.insert(newActivity)
         
-        // Update widget data
+        // Update widget data (Simple total)
         let currentFootprint = SharedDataManager.shared.dailyFootprint
         SharedDataManager.shared.saveDailyFootprint(currentFootprint + calculatedUsage)
+        
+        // Update widget history (Advanced Chart Data)
+        updateWidgetHistory()
         
         // Reload widget
         WidgetCenter.shared.reloadTimelines(ofKind: "SuIzimWidget")
         
         dismiss()
+    }
+    
+    private func updateWidgetHistory() {
+        do {
+            try modelContext.save() // Ensure new activity is saved
+            
+            let descriptor = FetchDescriptor<ActivityLog>()
+            let allActivities = try modelContext.fetch(descriptor)
+            
+            var history: [DailyUsage] = []
+            let calendar = Calendar.current
+            // Başlangıç tarihi olarak bugünü al
+            let today = calendar.startOfDay(for: Date())
+            
+            // Son 5 günü hesapla (Bugün dahil geriye doğru)
+            for i in 0..<5 {
+                if let date = calendar.date(byAdding: .day, value: -i, to: today) {
+                    let dayActivities = allActivities.filter { calendar.isDate($0.date, inSameDayAs: date) }
+                    let total = dayActivities.reduce(0) { $0 + $1.totalWaterLiters }
+                    
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "EEE" // Pzt, Sal
+                    formatter.locale = Locale(identifier: "tr_TR")
+                    
+                    history.append(DailyUsage(date: date, totalLiters: total, weekday: formatter.string(from: date)))
+                }
+            }
+            
+            // Widget için kronolojik sıra (Eskiden yeniye)
+            SharedDataManager.shared.saveWeeklyHistory(history.reversed())
+            
+        } catch {
+            print("Widget geçmişi güncellenirken hata: \(error)")
+        }
     }
 }
 

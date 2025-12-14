@@ -54,4 +54,35 @@ class SharedDataManager {
         dailyFootprint = footprint
         lastUpdate = Date()
     }
+    
+    // MARK: - Weekly History
+    
+    private let weeklyHistoryKey = "weeklyHistory"
+    
+    var weeklyHistory: [DailyUsage] {
+        get {
+            guard let data = userDefaults?.data(forKey: weeklyHistoryKey),
+                  let decoded = try? JSONDecoder().decode([DailyUsage].self, from: data) else {
+                return []
+            }
+            return decoded
+        }
+        set {
+            if let encoded = try? JSONEncoder().encode(newValue) {
+                userDefaults?.set(encoded, forKey: weeklyHistoryKey)
+            }
+        }
+    }
+    
+    func saveWeeklyHistory(_ history: [DailyUsage]) {
+        weeklyHistory = history
+        lastUpdate = Date()
+    }
+}
+
+struct DailyUsage: Codable, Identifiable {
+    var id: Date { date }
+    let date: Date
+    let totalLiters: Double
+    let weekday: String // e.g., "Pzt"
 }
