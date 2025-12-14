@@ -152,39 +152,58 @@ struct LiquidView: View {
                 .animation(.easeInOut, value: rate)
             }
         }
-        .clipShape(ContainerRelativeShape())
     }
 }
-
 // MARK: - Views
 
 struct SmallWidgetView: View {
     let entry: Provider.Entry
     
-    var textColor: Color {
-        // If rate is high (>60%), text is on water (white). Else, text is on air (blue).
-        return entry.rate > 60 ? .white : .blue
+    var cityImageName: String {
+        let normalizedCity = entry.city.lowercased()
+            .folding(options: .diacriticInsensitive, locale: .current)
+            .replacingOccurrences(of: "ı", with: "i")
+        
+        if normalizedCity.contains("istanbul") { return "istanbul" }
+        if normalizedCity.contains("ankara") { return "ankara" }
+        if normalizedCity.contains("izmir") { return "izmir" }
+        if normalizedCity.contains("bursa") { return "bursa" }
+        return "istanbul"
     }
     
     var body: some View {
         ZStack {
-            // 1. LIQUID BACKGROUND
-            LiquidView(rate: entry.rate)
+            // 1. PHOTO BACKGROUND
+            // 1. PHOTO BACKGROUND
+            Image(cityImageName)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(maxWidth: .infinity, maxHeight: .infinity) // Force fill
+                .clipped() // Ensure no overflow
+                .overlay(Color.black.opacity(0.2)) // Genel karartma
+                .overlay(
+                    LinearGradient(
+                        colors: [.black.opacity(0.3), .black.opacity(0.8)], // Alt kısım daha koyu
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             
             // 2. CONTENT LAYER
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
                 // Header
-                HStack {
+                HStack(spacing: 4) {
                     Image(systemName: "drop.fill")
-                        .foregroundStyle(textColor)
+                        .foregroundStyle(.cyan.gradient)
                         .font(.caption2)
                     Text(entry.city.uppercased())
-                        .font(.caption2)
-                        .fontWeight(.heavy)
-                        .foregroundStyle(textColor)
-                    Spacer()
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 .padding(.bottom, 8)
+                .padding(.top, 4)
                 
                 Spacer()
                 
@@ -192,41 +211,40 @@ struct SmallWidgetView: View {
                 VStack(spacing: 0) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text(String(format: "%.1f", floor(entry.rate * 10) / 10))
-                            .font(.system(size: 42, weight: .black, design: .rounded))
-                            .foregroundStyle(textColor)
+                            .font(.system(size: 40, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                         Text("%")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(textColor.opacity(0.7))
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.8))
                             .offset(y: -4)
                     }
                     Text("DOLULUK")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(textColor.opacity(0.8))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
                         .tracking(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 
                 Spacer()
                 
-                // Footer (Personal Consumption)
+                // Footer (Personal Consumption - Glassmorphism)
                 VStack(spacing: 4) {
                     Divider()
-                        .overlay(textColor.opacity(0.3))
+                        .overlay(.white.opacity(0.3))
                     
-                    HStack(alignment: .bottom) {
+                    HStack(alignment: .bottom, spacing: 4) {
                         Text("BUGÜN:")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(textColor.opacity(0.8))
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.9))
                         
                         Text("\(Int(entry.footprint))L")
-                            .font(.system(size: 16, weight: .black, design: .rounded))
-                            .foregroundStyle(textColor)
-                            
-                        Spacer()
+                            .font(.system(size: 15, weight: .black, design: .rounded))
+                            .foregroundStyle(.cyan)
                     }
                 }
+                .padding(.bottom, 4)
             }
-            .padding()
+            .padding(16) // Safe padding
         }
     }
 }
@@ -238,96 +256,141 @@ struct MediumWidgetView: View {
         entry.history.map(\.totalLiters).max() ?? 200
     }
     
+    var cityImageName: String {
+        let normalizedCity = entry.city.lowercased()
+            .folding(options: .diacriticInsensitive, locale: .current)
+            .replacingOccurrences(of: "ı", with: "i") // Extra safety for Turkish inputs
+        
+        if normalizedCity.contains("istanbul") { return "istanbul" }
+        if normalizedCity.contains("ankara") { return "ankara" }
+        if normalizedCity.contains("izmir") { return "izmir" }
+        if normalizedCity.contains("bursa") { return "bursa" }
+        return "istanbul"
+    }
+    
     var body: some View {
-        HStack(spacing: 0) {
-            // LEFT COLUMN: LIQUID TANK representation
-            ZStack {
-                LiquidView(rate: entry.rate)
-                
-                VStack {
+        ZStack {
+            // BACKGROUND IMAGE - Full Width
+            Image(cityImageName)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .overlay(Color.black.opacity(0.3)) // Genel karartma artırıldı
+                .overlay(
+                    LinearGradient(
+                        colors: [.black.opacity(0.4), .black.opacity(0.9)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            
+            HStack(spacing: 0) {
+                // LEFT COLUMN: SUMMARY
+                VStack(spacing: 8) {
                     HStack {
                         Image(systemName: "drop.fill")
+                            .foregroundStyle(.cyan.gradient)
                             .font(.caption2)
-                            .foregroundStyle(entry.rate > 60 ? .white : .blue)
                         Text(entry.city.uppercased())
                             .font(.caption2)
                             .fontWeight(.heavy)
-                            .foregroundStyle(entry.rate > 60 ? .white : .primary)
+                            .foregroundStyle(.white.opacity(0.9))
                         Spacer()
                     }
+                    
                     Spacer()
                     
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(String(format: "%.1f", floor(entry.rate * 10) / 10))
-                            .font(.system(size: 34, weight: .black, design: .rounded))
-                            .foregroundStyle(entry.rate > 60 ? .white : .blue)
-                            .shadow(radius: entry.rate > 60 ? 2 : 0)
-                        Text("% DOLU")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(entry.rate > 60 ? .white.opacity(0.9) : .secondary)
+                    // Percentage Display
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text(String(format: "%.1f", floor(entry.rate * 10) / 10))
+                                .font(.system(size: 34, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                                .shadow(radius: 2)
+                            Text("%")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        
+                        Text("DOLULUK")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .tracking(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     
                     Spacer()
                 }
+                .frame(width: 140)
                 .padding()
-            }
-            .frame(width: 130)
-            
-            // RIGHT COLUMN: CHART (Clean White Area)
-            VStack(alignment: .leading, spacing: 12) {
-                // Header (Today's Summary)
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("ÖZET")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundStyle(.secondary)
-                            .tracking(0.5)
-                        Text("Son 5 Gün")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text("\(Int(entry.footprint))L")
-                        .font(.system(size: 20, weight: .black, design: .rounded))
-                        .foregroundStyle(.blue)
-                }
                 
-                if entry.history.isEmpty {
-                    VStack {
-                        Spacer()
-                        Text("Veri Yok")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                } else {
-                    Chart(entry.history) { item in
-                        BarMark(
-                            x: .value("Gün", item.weekday),
-                            y: .value("Litre", item.totalLiters)
+                // Vertical Divider
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.clear, .white.opacity(0.3), .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.blue, .cyan],
-                                startPoint: .bottom,
-                                endPoint: .top
-                            )
-                        )
-                        .cornerRadius(2)
-                    }
-                    .chartXAxis {
-                        AxisMarks { _ in
-                            AxisValueLabel()
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(Color.gray)
+                    )
+                    .frame(width: 1)
+                    .padding(.vertical, 16)
+                
+            // RIGHT COLUMN: CHART (On Transparent/Glass Background)
+                VStack(alignment: .leading, spacing: 12) {
+                    // Header (Today's Summary)
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("ÖZET")
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .tracking(0.5)
+                            Text("Son 5 Gün")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.9)) // Daha parlak
                         }
+                        Spacer()
+                        Text("\(Int(entry.footprint))L")
+                            .font(.system(size: 20, weight: .black, design: .rounded))
+                            .foregroundStyle(.white) // Beyaz yapıldı
+                            .shadow(radius: 2)
                     }
-                    .chartYAxis(.hidden)
+                    
+                    if entry.history.isEmpty {
+                        VStack {
+                            Spacer()
+                            Text("Veri Yok")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.6))
+                            Spacer()
+                        }
+                    } else {
+                        Chart(entry.history) { item in
+                            BarMark(
+                                x: .value("Gün", item.weekday),
+                                y: .value("Litre", item.totalLiters)
+                            )
+                            .foregroundStyle(.white) // Saf beyaz çubuklar
+                            .cornerRadius(2)
+                        }
+                        .chartXAxis {
+                            AxisMarks { _ in
+                                AxisValueLabel()
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.8)) // Daha okunaklı eksen yazıları
+                            }
+                        }
+                        .chartYAxis(.hidden)
+                    }
                 }
+                .padding()
+                .background(Color.black.opacity(0.4)) // Yarı saydam arka plan paneli
+                .clipShape(RoundedRectangle(cornerRadius: 12)) // Köşeleri yumuşat
+                .padding(8) // Panel ile kenar arasında boşluk
             }
-            .padding()
-            .background(Color.white)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
     }
 }
@@ -359,12 +422,7 @@ struct SuIzimWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             SuIzimWidgetEntryView(entry: entry)
                 .containerBackground(for: .widget) {
-                    // Soft Sky Gradient
-                    LinearGradient(
-                        colors: [Color.white, Color(red: 0.9, green: 0.95, blue: 1.0)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                     Color.black // Arka plan fotoğrafı olduğu için container rengi önemsiz
                 }
         }
         .configurationDisplayName("Su İzim")
@@ -373,6 +431,7 @@ struct SuIzimWidget: Widget {
         .contentMarginsDisabled()
     }
 }
+
 
 #Preview(as: .systemMedium) {
     SuIzimWidget()
