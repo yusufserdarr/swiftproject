@@ -71,7 +71,7 @@ struct DashboardView: View {
                         
                         // Reservoir Status
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("\(selectedCity.rawValue) Baraj Doluluk Oranları")
+                            Text("\(selectedCity.rawValue) \(reservoirData.isEmpty ? "Genel Doluluk Oranı" : "Baraj Doluluk Oranları")")
                                 .font(.title3)
                                 .bold()
                                 .foregroundStyle(.primary)

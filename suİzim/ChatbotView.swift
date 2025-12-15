@@ -1,3 +1,4 @@
+/*
 import SwiftUI
 
 import SwiftUI
@@ -165,3 +166,4 @@ struct TypingIndicatorView: View {
 #Preview {
     ChatbotView()
 }
+*/

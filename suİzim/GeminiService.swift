@@ -1,3 +1,4 @@
+/*
 import Foundation
 
 enum GeminiError: LocalizedError {
@@ -132,3 +133,4 @@ class GeminiService {
         throw lastError
     }
 }
+*/
