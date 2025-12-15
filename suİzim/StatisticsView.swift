@@ -280,41 +280,53 @@ struct StatisticsView: View {
     // MARK: - Activity List Section
     
     private var activityListSection: some View {
-        Section(header: Text(selectedPeriod == .day ? "Bugünkü Aktiviteler" : "Son Aktiviteler")) {
-            let displayActivities = selectedPeriod == .day ? todayActivities : Array(activities.prefix(15))
-            
-            if displayActivities.isEmpty {
-                Text("Henüz aktivite eklenmemiş")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(displayActivities) { activity in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(activity.name)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text(activity.date.formatted(.dateTime.day().month().hour().minute()))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(String(format: "%.0f L", activity.totalWaterLiters))
-                            .font(.subheadline)
-                            .bold()
-                            .foregroundStyle(.blue)
-                    }
+        let groupedData = Dictionary(grouping: selectedPeriod == .day ? todayActivities : Array(activities.prefix(15))) { activity in
+            Calendar.current.startOfDay(for: activity.date)
+        }
+        let sortedDates = groupedData.keys.sorted(by: >)
+        
+        return Group {
+            if sortedDates.isEmpty {
+                Section(header: Text("Son Aktiviteler")) {
+                    Text("Henüz aktivite eklenmemiş")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .onDelete { indexSet in
-                    // `displayActivities` üzerinden silme işlemi, ana array için index bulmalıyız
-                    // Ancak onDelete, ForEach'in kullandığı collection üzerindeki indexSet'i verir.
-                    // Burada `displayActivities` computed bir array olduğu için doğrudan silinemez.
-                    // Bu yüzden activity nesnesini bulup context'ten silmeliyiz.
-                    
-                    for index in indexSet {
-                        if index < displayActivities.count {
-                             let activityToDelete = displayActivities[index]
-                             deleteActivity(activityToDelete)
+            } else {
+                ForEach(sortedDates, id: \.self) { date in
+                    Section(header: Text(date.formatted(date: .abbreviated, time: .omitted))) {
+                        let dayActivities = groupedData[date]!
+                            .sorted { $0.date > $1.date }
+                        
+                        ForEach(dayActivities) { activity in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(activity.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    Text(activity.date.formatted(date: .omitted, time: .shortened))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(String(format: "%.0f L", activity.totalWaterLiters))
+                                    .font(.subheadline)
+                                    .bold()
+                                    .foregroundStyle(.blue)
+                            }
+                            // Restrict deletion to Today only
+                            .deleteDisabled(!Calendar.current.isDateInToday(activity.date))
+                        }
+                        .onDelete { indexSet in
+                            // Only allow delete if this section is Today
+                            guard Calendar.current.isDateInToday(date) else { return }
+                            
+                            for index in indexSet {
+                                if index < dayActivities.count {
+                                    let activityToDelete = dayActivities[index]
+                                    deleteActivity(activityToDelete)
+                                }
+                            }
                         }
                     }
                 }
