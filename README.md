@@ -25,12 +25,6 @@
 *   **WidgetKit:** iOS Ana Ekran widget entegrasyonu.
 *   **Web Scraping (WKWebView) & API Entegrasyonu:** Belediyelerin açık veri portallarından ve web sitelerinden canlı veri çekme.
 
-## 📸 Ekran Görüntüleri
-
-| Ana Ekran | İstatistikler | Widget |
-|:---:|:---:|:---:|
-| <!--  <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 36 08" src="https://github.com/user-attachments/assets/7a3f81bf-a71e-4ee6-9a85-ca8904fba802" />
---> | <!-- <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 40 50" src="https://github.com/user-attachments/assets/bb1948fd-202b-405d-bd8b-cee72411a257" />  --> | <!-- <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 40 59" src="https://github.com/user-attachments/assets/fb911a0a-c84b-4d8e-b836-cc74b281727f" /> --> |
 
 ## ⚠️ Notlar
 
