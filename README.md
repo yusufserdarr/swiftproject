@@ -1,4 +1,4 @@
-<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 40 50" src="https://github.com/user-attachments/assets/e13c7c01-0128-486a-af28-1de0053a699f" /># Suİzim - Su Ayak İzi ve Baraj Doluluk Takibi
+# Suİzim - Su Ayak İzi ve Baraj Doluluk Takibi
 
 **Suİzim**, günlük su ayak izinizi hesaplamanıza ve Türkiye'nin büyük şehirlerindeki baraj doluluk oranlarını canlı olarak takip etmenize yardımcı olan bir iOS uygulamasıdır. Hem doğrudan su tüketiminizi (musluk, duş vb.) hem de sanal su tüketiminizi (yediğiniz gıdalar, kıyafetler vb.) takip ederek su tasarrufu bilinci oluşturmayı hedefler.
 
@@ -30,9 +30,7 @@
 | Ana Ekran | İstatistikler | Widget |
 |:---:|:---:|:---:|
 | <!--  <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 36 08" src="https://github.com/user-attachments/assets/7a3f81bf-a71e-4ee6-9a85-ca8904fba802" />
---> | <!-- <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 40 50" src="https://github.com/user-attachments/assets/bb1948fd-202b-405d-bd8b-cee72411a257" />
- --> | <!-- <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 40 59" src="https://github.com/user-attachments/assets/fb911a0a-c84b-4d8e-b836-cc74b281727f" />
- --> |
+--> | <!-- <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 40 50" src="https://github.com/user-attachments/assets/bb1948fd-202b-405d-bd8b-cee72411a257" />  --> | <!-- <img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-12-28 at 12 40 59" src="https://github.com/user-attachments/assets/fb911a0a-c84b-4d8e-b836-cc74b281727f" /> --> |
 
 ## ⚠️ Notlar
 
