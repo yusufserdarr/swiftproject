@@ -25,15 +25,6 @@
 *   **WidgetKit:** iOS Ana Ekran widget entegrasyonu.
 *   **Web Scraping (WKWebView) & API Entegrasyonu:** Belediyelerin açık veri portallarından ve web sitelerinden canlı veri çekme.
 
-## 📸 Ekran Görüntüleri
-
-| Ana Ekran | İstatistikler | Başarımlar | Widgetlar |
-|:---:|:---:|:---:|:---:|
-| <img src="screenshots/dashboard_main.png" width="200"> | <img src="screenshots/statistics.png" width="200"> | <img src="screenshots/achievements.png" width="200"> | <img src="dashboard_4.png" width="200"> |
-| | | | <img src="screenshots/dashboard_1.png" width="200"> |
-| | | | <img src="screenshots/dashboard_2.png" width="200"> |
-| | | | <img src="screenshots/dashboard_3.png" width="200"> |
-
 ## 🚀 Kurulum
 
 1.  Projeyi klonlayın:
