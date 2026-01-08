@@ -25,10 +25,28 @@
 *   **WidgetKit:** iOS Ana Ekran widget entegrasyonu.
 *   **Web Scraping (WKWebView) & API Entegrasyonu:** Belediyelerin açık veri portallarından ve web sitelerinden canlı veri çekme.
 
+## 📸 Ekran Görüntüleri
+
+| Ana Ekran | İstatistikler | Widget |
+|:---:|:---:|:---:|
+| <img src="screenshots/dashboard_1.png" width="250"> | <img src="screenshots/dashboard_2.png" width="250"> | <img src="screenshots/widget_medium.png" width="250"> |
+| <img src="screenshots/dashboard_3.png" width="250"> | <img src="screenshots/dashboard_4.png" width="250"> | <img src="screenshots/widget_small.png" width="250"> |
+
+## 🚀 Kurulum
+
+1.  Projeyi klonlayın:
+    ```bash
+    git clone https://github.com/kullaniciadi/suIzim.git
+    ```
+2.  Xcode ile `suİzim.xcodeproj` dosyasını açın.
+3.  Signing & Capabilities sekmesinden kendi Geliştirici Hesabınızı seçin.
+4.  Simulator veya fiziksel cihazınızda çalıştırın.
 
 ## ⚠️ Notlar
 
 *   Uygulama, verileri çekmek için internet bağlantısı gerektirir.
 *   Baraj verileri ilgili belediyelerin web servislerinden veya web sitelerinden çekilmektedir; kaynak taraflı değişikliklerde veri akışı kesilebilir.
 
+## 📄 Lisans
 
+Bu proje MIT Lisansı ile lisanslanmıştır.
