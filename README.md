@@ -29,10 +29,10 @@
 
 | Ana Ekran | İstatistikler | Başarımlar | Widgetlar |
 |:---:|:---:|:---:|:---:|
-| <img src="screenshots/dashboard_main.png" width="200"> | <img src="screenshots/statistics.png" width="200"> | <img src="screenshots/achievements.png" width="200"> | <img src="screenshots/widget_1.png" width="200"> |
-| | | | <img src="screenshots/widget_2.png" width="200"> |
-| | | | <img src="screenshots/widget_3.png" width="200"> |
-| | | | <img src="screenshots/widget_4.png" width="200"> |
+| <img src="screenshots/dashboard_main.png" width="200"> | <img src="screenshots/statistics.png" width="200"> | <img src="screenshots/achievements.png" width="200"> | <img src="dashboard_4.png" width="200"> |
+| | | | <img src="screenshots/dashboard_1.png" width="200"> |
+| | | | <img src="screenshots/dashboard_2.png" width="200"> |
+| | | | <img src="screenshots/dashboard_3.png" width="200"> |
 
 ## 🚀 Kurulum
 
